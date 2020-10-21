@@ -1,6 +1,9 @@
+from typing import Optional
+
 import numpy as np
 import scipy.sparse as sp
 import torch
+from torch_scatter import scatter_add
 
 
 def encode_onehot(labels):
@@ -10,6 +13,51 @@ def encode_onehot(labels):
     labels_onehot = np.array(list(map(classes_dict.get, labels)),
                              dtype=np.int32)
     return labels_onehot
+
+
+def add_remaining_self_loops(edge_index,
+                             num_nodes: int,
+                             edge_weight: Optional[torch.Tensor] = None,
+                             fill_value: float = 1., ):
+    N = num_nodes
+    row, col = edge_index[0], edge_index[1]
+    mask = row != col
+
+    loop_index = torch.arange(0, N, dtype=row.dtype, device=row.device)
+    loop_index = loop_index.unsqueeze(0).repeat(2, 1)
+    edge_index = torch.cat([edge_index[:, mask], loop_index], dim=1)
+
+    if edge_weight is not None:
+        inv_mask = ~mask
+
+        loop_weight = torch.full((N,), fill_value, dtype=edge_weight.dtype,
+                                 device=edge_index.device)
+        remaining_edge_weight = edge_weight[inv_mask]
+        if remaining_edge_weight.numel() > 0:
+            loop_weight[row[inv_mask]] = remaining_edge_weight
+        edge_weight = torch.cat([edge_weight[mask], loop_weight], dim=0)
+
+    return edge_index, edge_weight
+
+
+def gcn_norm(edge_index, num_nodes: int, edge_weight=None, improved=False,
+             add_self_loops=True):
+    fill_value = 2. if improved else 1.
+
+    if edge_weight is None:
+        edge_weight = torch.ones((edge_index.size(1),))
+
+    if add_self_loops:
+        edge_index, tmp_edge_weight = add_remaining_self_loops(
+            edge_index, num_nodes, edge_weight, fill_value)
+        assert tmp_edge_weight is not None
+        edge_weight = tmp_edge_weight
+
+    row, col = edge_index[0], edge_index[1]
+    deg = scatter_add(edge_weight, col, dim=0, dim_size=num_nodes)
+    deg_inv_sqrt = deg.pow_(-0.5)
+    deg_inv_sqrt.masked_fill_(deg_inv_sqrt == float('inf'), 0)
+    return edge_index, deg_inv_sqrt[row] * edge_weight * deg_inv_sqrt[col]
 
 
 def load_data(path="../data/cora/", dataset="cora"):
@@ -29,32 +77,16 @@ def load_data(path="../data/cora/", dataset="cora"):
     edges = np.array(list(map(idx_map.get, edges_unordered.flatten())),
                      dtype=np.int32).reshape(edges_unordered.shape)
 
-    node_amount = len(idx)
-    self_edges = np.arange(node_amount).repeat(2).reshape(-1, 2)
-    # edges = np.concatenate((edges, self_edges))
+    num_nodes = len(idx)
+    edge_index = np.concatenate((edges, edges[:, [1, 0]])).transpose()
+    edge_index = torch.LongTensor(edge_index)
+    edge_index, edge_weight = gcn_norm(edge_index, num_nodes)
+    edge_weight = edge_weight.reshape(-1, 1)
 
-    src = edges[:, 0]
-    src_d = np.bincount(src, minlength=node_amount)
-    dst = edges[:, 1]
-    dst_d = np.bincount(dst, minlength=node_amount)
-    d = src_d + dst_d
-
-    sqrt_d = np.sqrt(d)
-    edge_weight = sqrt_d[src] * sqrt_d[dst]
-
-    src = torch.LongTensor(src)
-    dst = torch.LongTensor(dst)
-    edge_weight = torch.FloatTensor(edge_weight).reshape(-1, 1)
-
-    # adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
-    #                     shape=(labels.shape[0], labels.shape[0]),
-    #                     dtype=np.float32)
-
-    # build symmetric adjacency matrix
-    # adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+    src = edge_index[0]
+    dst = edge_index[1]
 
     features = normalize(features)
-    # adj = normalize(adj + sp.eye(adj.shape[0]))
 
     idx_train = range(140)
     idx_val = range(200, 500)
@@ -62,7 +94,6 @@ def load_data(path="../data/cora/", dataset="cora"):
 
     features = torch.FloatTensor(np.array(features.todense()))
     labels = torch.LongTensor(np.where(labels)[1])
-    # adj = sparse_mx_to_torch_sparse_tensor(adj)
 
     idx_train = torch.LongTensor(idx_train)
     idx_val = torch.LongTensor(idx_val)
