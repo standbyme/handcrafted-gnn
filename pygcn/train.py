@@ -39,7 +39,7 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 # Load data
-adj, features, labels, idx_train, idx_val, idx_test = load_data()
+src, dst, edge_weight, features, labels, idx_train, idx_val, idx_test = load_data()
 
 # Model and optimizer
 model = GCN(nfeat=features.shape[1],
@@ -52,7 +52,9 @@ optimizer = optim.Adam(model.parameters(),
 if args.cuda:
     model.cuda()
     features = features.cuda()
-    adj = adj.cuda()
+    src = src.cuda()
+    dst = dst.cuda()
+    edge_weight = edge_weight.cuda()
     labels = labels.cuda()
     idx_train = idx_train.cuda()
     idx_val = idx_val.cuda()
@@ -63,7 +65,7 @@ def train(epoch):
     t = time.time()
     model.train()
     optimizer.zero_grad()
-    output = model(features, adj)
+    output = model(features, src, dst, edge_weight)
     loss_train = F.nll_loss(output[idx_train], labels[idx_train])
     acc_train = accuracy(output[idx_train], labels[idx_train])
     loss_train.backward()
@@ -73,7 +75,7 @@ def train(epoch):
         # Evaluate validation set performance separately,
         # deactivates dropout during validation run.
         model.eval()
-        output = model(features, adj)
+        output = model(features, src, dst, edge_weight)
 
     loss_val = F.nll_loss(output[idx_val], labels[idx_val])
     acc_val = accuracy(output[idx_val], labels[idx_val])
@@ -87,7 +89,7 @@ def train(epoch):
 
 def test():
     model.eval()
-    output = model(features, adj)
+    output = model(features, src, dst, edge_weight)
     loss_test = F.nll_loss(output[idx_test], labels[idx_test])
     acc_test = accuracy(output[idx_test], labels[idx_test])
     print("Test set results:",

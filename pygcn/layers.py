@@ -28,9 +28,11 @@ class GraphConvolution(Module):
         if self.bias is not None:
             self.bias.data.uniform_(-stdv, stdv)
 
-    def forward(self, input, adj):
+    def forward(self, input, src, dst: torch.Tensor, edge_weight):
         support = torch.mm(input, self.weight)
-        output = torch.spmm(adj, support)
+        message = torch.index_select(support, dim=0, index=src)
+        message = torch.mul(message, edge_weight)
+        output = torch.zeros_like(message).scatter_add_(0, dst.repeat(message.size(1), 1).T, message)
         if self.bias is not None:
             return output + self.bias
         else:

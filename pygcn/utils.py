@@ -28,15 +28,33 @@ def load_data(path="../data/cora/", dataset="cora"):
                                     dtype=np.int32)
     edges = np.array(list(map(idx_map.get, edges_unordered.flatten())),
                      dtype=np.int32).reshape(edges_unordered.shape)
-    adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
-                        shape=(labels.shape[0], labels.shape[0]),
-                        dtype=np.float32)
+
+    node_amount = len(idx)
+    self_edges = np.arange(node_amount).repeat(2).reshape(-1, 2)
+    # edges = np.concatenate((edges, self_edges))
+
+    src = edges[:, 0]
+    src_d = np.bincount(src, minlength=node_amount)
+    dst = edges[:, 1]
+    dst_d = np.bincount(dst, minlength=node_amount)
+    d = src_d + dst_d
+
+    sqrt_d = np.sqrt(d)
+    edge_weight = sqrt_d[src] * sqrt_d[dst]
+
+    src = torch.LongTensor(src)
+    dst = torch.LongTensor(dst)
+    edge_weight = torch.FloatTensor(edge_weight).reshape(-1, 1)
+
+    # adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+    #                     shape=(labels.shape[0], labels.shape[0]),
+    #                     dtype=np.float32)
 
     # build symmetric adjacency matrix
-    adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+    # adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
 
     features = normalize(features)
-    adj = normalize(adj + sp.eye(adj.shape[0]))
+    # adj = normalize(adj + sp.eye(adj.shape[0]))
 
     idx_train = range(140)
     idx_val = range(200, 500)
@@ -44,13 +62,13 @@ def load_data(path="../data/cora/", dataset="cora"):
 
     features = torch.FloatTensor(np.array(features.todense()))
     labels = torch.LongTensor(np.where(labels)[1])
-    adj = sparse_mx_to_torch_sparse_tensor(adj)
+    # adj = sparse_mx_to_torch_sparse_tensor(adj)
 
     idx_train = torch.LongTensor(idx_train)
     idx_val = torch.LongTensor(idx_val)
     idx_test = torch.LongTensor(idx_test)
 
-    return adj, features, labels, idx_train, idx_val, idx_test
+    return src, dst, edge_weight, features, labels, idx_train, idx_val, idx_test
 
 
 def normalize(mx):
