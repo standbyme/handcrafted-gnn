@@ -1,7 +1,8 @@
 Graph Convolutional Networks in PyTorch
 ====
 
-PyTorch implementation of Graph Convolutional Networks (GCNs) for semi-supervised classification [1], with Sparse Matrix and Gather/Scatter.
+PyTorch implementation of Graph Convolutional Networks (GCNs) for semi-supervised classification [1]
+, with Sparse Matrix(on [master](https://github.com/standbyme/handcrafted-gnn/tree/master) branch) and Gather/Scatter(on [Gather-Scatter](https://github.com/standbyme/handcrafted-gnn/tree/Gather-Scatter) branch).
 
 For a high-level introduction to GCNs, see: Thomas Kipf, [Graph Convolutional Networks](http://tkipf.github.io/graph-convolutional-networks/) (2016)
 
@@ -16,7 +17,7 @@ This implementation makes use of the Cora dataset from [2].
 ## Requirements
 
   * PyTorch 1.6.0
-  * Python 3.8
+  * Python 3.8.0
 
 ## References
 
